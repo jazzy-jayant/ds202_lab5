@@ -1,0 +1,192 @@
+---
+title: "Lab 5"
+output: html_document
+author: Jayant Shah
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load data
+
+```{r}
+acc <- read.csv("https://raw.githubusercontent.com/xdaiISU/ds202materials/master/hwlabs/fars2017/accident.csv", stringsAsFactors = FALSE)
+
+pers <- read.csv("https://raw.githubusercontent.com/xdaiISU/ds202materials/master/hwlabs/fars2017/person.csv", stringsAsFactors = FALSE)
+```
+
+# 1.
+
+```{r}
+pers1 = subset(pers, pers$INJ_SEV==4)
+```
+
+# 2.
+
+```{r}
+library(dplyr)
+pers1_MAKE = pers1 %>% group_by(STATE,MAKE) %>% summarise(vehicle_make_acc=n())
+# Delete NA
+pers1_MAKE = na.omit(pers1_MAKE)
+
+pers1_MAKE1 = pers1_MAKE %>% group_by(STATE) %>% filter(vehicle_make_acc==max(vehicle_make_acc)) %>% as.data.frame
+pers1_MAKE1
+```
+
+# 3.
+
+```{r}
+state = readxl::read_xlsx("FRPP_GLC_-_United_StatesNov42021.xlsx")
+names(state)[3] = "State_Code"
+df = merge(pers1_MAKE1, state, by.x = "STATE", by.y = "State_Code", all.x = T, all.y = T)
+df = na.omit(df[,c(1,2,3,5)])
+df = df[!duplicated(df[,3:4]), ]
+
+
+library(usmap)
+library(tidyverse)
+
+us <- usmap::us_map()
+region = df$`State Name`
+
+region <- str_to_title(region)
+share =  df$MAKE
+share_df <- data.frame(region, share)
+
+us_val <- 
+  left_join(us, share_df, by = c("full" ="region")) 
+#> Warning: Column `full`/`region` joining character vector and factor, coercing
+#> into character vector
+
+us_centroids <- 
+  us_val %>%
+  group_by(full) %>% 
+  summarise(centroid.x = mean(range(x)), 
+            centroid.y = mean(range(y)),
+            label = unique(toupper(str_sub(full,1,2))),
+            share = unique(share))
+
+ggplot() + 
+  geom_polygon(data = us_val, 
+               aes(x,y, group = group, fill = as.factor(share)), 
+               color = "black",
+               size = .1) +
+  geom_text(data = us_centroids, 
+            aes(centroid.x, centroid.y, label = paste(label, "\n", share)),
+            size = 5/14*8) +
+  scale_fill_brewer(name = "MAKE", 
+                    palette = "Blues") +
+  theme_void()
+```
+
+Most fatal accidents are associated with Chevrolet and Ford cars.
+
+# 4.
+
+```{r}
+pers_acc = merge(pers, acc[,-c(1,4,10,12,13,16,17,19,20,29,30,40)], by.x = "ST_CASE", by.y ="ST_CASE")
+
+```
+
+# 5.
+
+```{r}
+df5_1 = pers_acc %>% group_by(DAY_WEEK) %>% summarise(acc_DAY_WEEK=n())
+
+barplot( height=
+           df5_1$acc_DAY_WEEK, names=df5_1$DAY_WEEK , density=c(5,10,20,30,7,15,11) , angle=c(0,45,90,11,36,50,80) , col="brown", main = "Number of accidents by day of the week", ylab = "Number of accidents", xlab = "Day of the week")
+```
+
+The greatest number of accidents occurs on Sunday and Saturday. The least number of accidents occurs on Thursday.
+
+```{r}
+df5_2 = pers_acc %>% group_by(HOUR) %>% summarise(acc_HOUR=n())
+df5_2 = df5_2[1:24,]
+barplot( height=
+           df5_2$acc_HOUR, names=df5_2$HOUR ,border="#69b3a2", col="white", main = "Number of accidents by hour", ylab = "Number of accidents", xlab = "Hour")
+```
+
+The greatest number of accidents occurs from 17 to 19 hours. The smallest number of accidents occurs at 4 a.m.
+
+```{r}
+df5_3 = pers_acc %>% group_by(SEX) %>% summarise(acc_SEX=n())
+df5_3 = df5_3[1:2,]
+barplot( height=
+           df5_3$acc_SEX, names=df5_3$SEX ,border="red", col="blue", density=10, main = "Number of accidents by sex", ylab = "Number of accidents", xlab = "Sex")
+```
+
+Most accidents happen to men.
+
+# 6.
+
+```{r}
+pers1_county = pers1 %>% group_by(COUNTY) %>% summarise(value=n())
+
+names(state)[6]="County"
+names(state)[11]="Station_Code"
+
+df2 = merge(pers1_county, state[,c(6,11)], by.x = "COUNTY", by.y = "County", all.x = F, all.y = F)
+
+
+df2$Code = substr(df2$Station_Code,1,5)
+
+
+
+library(socviz)
+library(ggthemes)
+
+county_full <- left_join(county_map, county_data, by = "id")
+
+df3 = merge(county_full, df2[,c(2,4)], by.x = "id", by.y = "Code", all.x = F, all.y = F)
+
+df3$value_dens = ifelse(df3$value<10,"0-10",ifelse(df3$value<50,"10-50",ifelse(df3$value<100,"50-100",ifelse(df3$value<500,"100-500",">500"))))
+
+p <- ggplot(data = df3,
+            mapping = aes(x = long, y = lat,
+                          fill = value_dens, 
+                          group = group))
+
+p1 <- p + geom_polygon(color = "gray90", size = 0.05) + coord_equal()
+
+p2 <- p1 + scale_fill_brewer(palette="Blues",
+                             labels = c("0-10", "10-50", "50-100", "100-500",
+                                         ">500"))
+
+p2 + labs(fill = "Number of deaths") +
+    theme_map() +
+    guides(fill = guide_legend(nrow = 1)) + 
+    theme(legend.position = "bottom")
+
+
+
+
+```
+
+# 7.
+
+```{r}
+pers1$Sum.Win = ifelse(pers1$MONTH==12|pers1$MONTH==1|pers1$MONTH==2, "Winter", ifelse(pers1$MONTH==6|pers1$MONTH==7|pers1$MONTH==8, "Summer",NA))
+
+pers1_SW = pers1 %>% group_by(STATE, Sum.Win) %>% summarise(value=n())
+pers1_SW = na.omit(pers1_SW)
+
+df4 = merge(pers1_SW, state, by.x = "STATE", by.y = "State_Code", all.x = T, all.y = T)
+df4 = na.omit(df4[,c(1,2,3,5)])
+df4 = df4[!duplicated(df4[,3:4]), ]
+
+ggplot(data=df4, aes(x=`State Name`, y=value, fill=Sum.Win)) +
+geom_bar(stat="identity", color="black", position=position_dodge())+coord_flip()+
+  theme(text = element_text(size=7))+ scale_fill_discrete(name = "Season")
+
+```
+
+As you can see, the number of fatal accidents depends on the season and state.
+
+
+
+
+
+
+
+
